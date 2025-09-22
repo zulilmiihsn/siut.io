@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import CameraFeed from '../components/CameraFeed.jsx'
 import { socket } from '../utils/socket.js'
@@ -9,7 +9,6 @@ export default function GameRoom() {
   const [players, setPlayers] = useState([])
   const [result, setResult] = useState(null)
   const [countdown, setCountdown] = useState(0)
-  const countdownRef = useRef(null)
   const [readyMap, setReadyMap] = useState({})
   const [isReady, setIsReady] = useState(false)
   const [gameStarted, setGameStarted] = useState(false)
@@ -67,15 +66,7 @@ export default function GameRoom() {
     }
   }, [roomId])
 
-  // Remove auto-start countdown
-
-  function startCountdown() {
-    // Countdown is now handled by server
-    console.log('[siut.io] Countdown started by server')
-  }
-  function stopCountdown() {
-    if (countdownRef.current) clearInterval(countdownRef.current)
-  }
+  // Countdown is now handled by server
 
   function toggleReady() {
     const next = !isReady
@@ -83,9 +74,11 @@ export default function GameRoom() {
     socket.emit('set-ready', { roomId, ready: next })
   }
 
-  // Check if all players are ready
-  const allPlayersReady = players.length >= 2 && players.every(p => readyMap[p.id])
-  const canStartGame = allPlayersReady && !gameStarted && countdown === 0
+  // Check if all players are ready (memoized)
+  const canStartGame = useMemo(() => 
+    players.length >= 2 && players.every(p => readyMap[p.id]) && !gameStarted && countdown === 0,
+    [players.length, readyMap, gameStarted, countdown]
+  )
 
   const winnerText = useMemo(() => {
     if (!result) return '—'

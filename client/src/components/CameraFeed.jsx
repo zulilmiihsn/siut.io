@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Hands } from '@mediapipe/hands'
 import { Camera } from '@mediapipe/camera_utils'
 import { socket } from '../utils/socket.js'
-import { predictGestureFromLandmarks } from '../utils/model.js'
+import { predictGestureFromLandmarks, loadModel } from '../utils/model.js'
 
 export default function CameraFeed({ roomId, countdown }) {
   const videoRef = useRef(null)
@@ -18,36 +18,72 @@ export default function CameraFeed({ roomId, countdown }) {
   const [previewGesture, setPreviewGesture] = useState(null) // Keep for UI feedback
   const [errorMessage, setErrorMessage] = useState(null)
   const [cameraStatus, setCameraStatus] = useState('active')
+  const [handOrientation, setHandOrientation] = useState(null) // Track hand orientation
 
   const onResults = useCallback((results) => {
     const canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
     if (!ctx || !videoRef.current) return
     
-    // Set canvas size to match video
+    // Set canvas size to match video (only if changed)
     const videoWidth = videoRef.current.videoWidth || 640
     const videoHeight = videoRef.current.videoHeight || 480
-    canvas.width = videoWidth
-    canvas.height = videoHeight
-
-    // Canvas drawing optimized
+    if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
+      canvas.width = videoWidth
+      canvas.height = videoHeight
+    }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height)
 
     if (results.multiHandLandmarks) {
       ctx.fillStyle = '#22d3ee'
+      ctx.beginPath()
       results.multiHandLandmarks.forEach((landmarks) => {
         landmarks.forEach((lm) => {
-          ctx.beginPath()
           ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 4, 0, 2 * Math.PI)
-          ctx.fill()
         })
       })
+      ctx.fill()
+      
+      // Detect hand orientation for better guidance
+      if (results.multiHandLandmarks.length > 0) {
+        const hand = results.multiHandLandmarks[0]
+        if (hand && hand.length >= 21) {
+          // Calculate hand orientation based on palm center and wrist
+          const palmCenter = hand[9] // Middle finger MCP
+          const wrist = hand[0] // Wrist
+          const thumbBase = hand[1] // Thumb CMC
+          
+          // Calculate orientation vector
+          const palmToWrist = {
+            x: palmCenter.x - wrist.x,
+            y: palmCenter.y - wrist.y
+          }
+          
+          // Determine orientation
+          const angle = Math.atan2(palmToWrist.y, palmToWrist.x) * 180 / Math.PI
+          let orientation = 'facing_camera'
+          
+          if (angle > 45 && angle < 135) {
+            orientation = 'facing_right'
+          } else if (angle > -135 && angle < -45) {
+            orientation = 'facing_left'
+          } else if (angle > 135 || angle < -135) {
+            orientation = 'facing_up'
+          } else if (angle > -45 && angle < 45) {
+            orientation = 'facing_down'
+          }
+          
+          setHandOrientation(orientation)
+        }
+      }
+    } else {
+      setHandOrientation(null)
     }
 
             // Optimized live preview prediction with frame skipping
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0 && results.multiHandLandmarks[0] && results.multiHandLandmarks[0].length > 0) {
+            if (results.multiHandLandmarks?.length > 0) {
               const now = performance.now()
               
               // Skip frames for better performance
@@ -57,14 +93,21 @@ export default function CameraFeed({ roomId, countdown }) {
               if (now - lastPreviewTsRef.current > 300) { // Increased interval
                 lastPreviewTsRef.current = now
                 ;(async () => {
-                  const pred = await predictGestureFromLandmarks(results.multiHandLandmarks, canvas.width, canvas.height)
-                  
-                  if (pred && pred.error) {
-                    setPreviewGesture(null)
-                    setErrorMessage(pred.error)
-                  } else if (pred && pred.confidence >= 0.5) { // Higher confidence threshold
-                    setPreviewGesture(pred.label)
-                    setErrorMessage(null)
+                  // Coba deteksi dengan tangan pertama yang terdeteksi
+                  const handLandmarks = results.multiHandLandmarks[0]
+                  if (handLandmarks && handLandmarks.length > 0) {
+                    const pred = await predictGestureFromLandmarks([handLandmarks], canvas.width, canvas.height)
+                    
+                    if (pred?.error) {
+                      setPreviewGesture(null)
+                      setErrorMessage(pred.error)
+                    } else if (pred?.confidence >= 0.4) { // Turunkan threshold untuk deteksi lebih sensitif
+                      setPreviewGesture(pred.label)
+                      setErrorMessage(null)
+                    } else {
+                      setPreviewGesture(null)
+                      setErrorMessage(null)
+                    }
                   } else {
                     setPreviewGesture(null)
                     setErrorMessage(null)
@@ -81,25 +124,27 @@ export default function CameraFeed({ roomId, countdown }) {
            // When countdown reaches 0, submit a gesture (predicted)
            if (countdown === 0 && roomId && !submittedRef.current) {
              submittedRef.current = true
-             console.log('[siut.io] Submitting gesture, landmarks available:', !!results.multiHandLandmarks)
              ;(async () => {
-               const pred = await predictGestureFromLandmarks(results.multiHandLandmarks, canvas.width, canvas.height)
-               console.log('[siut.io] submit prediction:', pred)
-               
-               if (pred && pred.error) {
-                 console.log('[siut.io] Tidak bisa submit gesture:', pred.error)
-                 setErrorMessage(pred.error)
-                 // Reset submitted flag so user can try again
-                 submittedRef.current = false
-               } else if (pred && pred.label) {
-                 socket.emit('submit-gesture', { roomId, gesture: pred.label })
+               // Coba deteksi dengan tangan pertama yang terdeteksi
+               const handLandmarks = results.multiHandLandmarks?.[0]
+               if (handLandmarks && handLandmarks.length > 0) {
+                 const pred = await predictGestureFromLandmarks([handLandmarks], canvas.width, canvas.height)
+                 
+                 if (pred?.error) {
+                   setErrorMessage(pred.error)
+                   submittedRef.current = false
+                 } else if (pred?.label) {
+                   socket.emit('submit-gesture', { roomId, gesture: pred.label })
+                 } else {
+                   setErrorMessage("Tidak ada gesture yang terdeteksi")
+                   submittedRef.current = false
+                 }
                } else {
-                 console.log('[siut.io] Tidak ada gesture yang terdeteksi')
-                 setErrorMessage("Tidak ada gesture yang terdeteksi")
+                 setErrorMessage("Tidak ada tangan yang terdeteksi")
                  submittedRef.current = false
                }
              })()
-           }
+    }
   }, [countdown, roomId])
 
   useEffect(() => {
@@ -110,7 +155,7 @@ export default function CameraFeed({ roomId, countdown }) {
       isInitialized = true
       
       try {
-        console.log('[siut.io] Initializing camera and MediaPipe...')
+        // Initializing camera and MediaPipe
         
         // Cek apakah getUserMedia tersedia
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -130,12 +175,9 @@ export default function CameraFeed({ roomId, countdown }) {
 
         for (const constraint of constraints) {
           try {
-            console.log('[siut.io] Trying camera constraint:', constraint)
             stream = await navigator.mediaDevices.getUserMedia(constraint)
-            console.log('[siut.io] Camera access granted with constraint:', constraint)
             break
           } catch (err) {
-            console.log('[siut.io] Camera constraint failed:', constraint, err.message)
             continue
           }
         }
@@ -164,7 +206,7 @@ export default function CameraFeed({ roomId, countdown }) {
         setPermission('granted')
         setCameraStatus('active')
 
-        console.log('[siut.io] Setting up MediaPipe Hands...')
+        // Setting up MediaPipe Hands
         
         // Coba beberapa CDN untuk MediaPipe
         const cdnUrls = [
@@ -178,7 +220,7 @@ export default function CameraFeed({ roomId, countdown }) {
         
         for (const cdnUrl of cdnUrls) {
           try {
-            console.log('[siut.io] Trying MediaPipe CDN:', cdnUrl)
+            // Trying MediaPipe CDN
             hands = new Hands({ 
               locateFile: (file) => `${cdnUrl}${file}`,
               onError: (error) => {
@@ -207,19 +249,16 @@ export default function CameraFeed({ roomId, countdown }) {
         }
         
         hands.setOptions({
-          maxNumHands: 1,
-          modelComplexity: 0, // Turunkan complexity untuk stabilitas
-          minDetectionConfidence: 0.7, // Naikkan threshold
-          minTrackingConfidence: 0.7,  // Naikkan threshold
+          maxNumHands: 2, // Deteksi hingga 2 tangan untuk orientasi berbeda
+          modelComplexity: 1, // Naikkan complexity untuk deteksi yang lebih baik
+          minDetectionConfidence: 0.5, // Turunkan threshold untuk deteksi lebih sensitif
+          minTrackingConfidence: 0.5,  // Turunkan threshold untuk tracking lebih stabil
         })
         hands.onResults(onResults)
 
         // Pre-load the TensorFlow model
-        console.log('[siut.io] Pre-loading TensorFlow model...')
         try {
-          const { loadModel } = await import('../utils/model.js')
           await loadModel()
-          console.log('[siut.io] TensorFlow model pre-loaded successfully')
         } catch (e) {
           console.error('[siut.io] Failed to pre-load TensorFlow model:', e)
         }
@@ -236,15 +275,12 @@ export default function CameraFeed({ roomId, countdown }) {
               performanceMonitorRef.current.frameCount++
               if (now - performanceMonitorRef.current.lastCheck > 5000) { // Check every 5 seconds
                 const fps = performanceMonitorRef.current.frameCount / 5
-                console.log('[siut.io] Current FPS:', fps.toFixed(1))
                 
                 // Auto-adjust FPS based on performance
                 if (fps < targetFpsRef.current * 0.8) {
                   targetFpsRef.current = Math.max(10, targetFpsRef.current - 2)
-                  console.log('[siut.io] Reduced FPS to:', targetFpsRef.current)
                 } else if (fps > targetFpsRef.current * 1.2) {
                   targetFpsRef.current = Math.min(30, targetFpsRef.current + 2)
-                  console.log('[siut.io] Increased FPS to:', targetFpsRef.current)
                 }
                 
                 performanceMonitorRef.current = { frameCount: 0, lastCheck: now }
@@ -253,7 +289,7 @@ export default function CameraFeed({ roomId, countdown }) {
               // Cek apakah video masih aktif dan hands tersedia
               if (videoRef.current && videoRef.current.readyState >= 2 && hands && hands.send) {
                 try {
-                  await hands.send({ image: videoRef.current })
+            await hands.send({ image: videoRef.current })
                 } catch (e) {
                   console.warn('[siut.io] Hands processing error:', e)
                   // Jika hands error, coba restart
@@ -423,7 +459,7 @@ export default function CameraFeed({ roomId, countdown }) {
           stream = await navigator.mediaDevices.getUserMedia(constraint)
           break
         } catch (err) {
-          console.log('[siut.io] Constraint failed:', constraint, err.message)
+          // Constraint failed
           continue
         }
       }
@@ -454,10 +490,10 @@ export default function CameraFeed({ roomId, countdown }) {
     }
   }
 
-         return (
+  return (
            <div className="grid gap-2 md:gap-3">
-             <div className="relative w-full">
-               <video ref={videoRef} className="w-full rounded-lg hidden" muted playsInline></video>
+      <div className="relative w-full">
+        <video ref={videoRef} className="w-full rounded-lg hidden" muted playsInline></video>
                <canvas ref={canvasRef} className="w-full rounded-lg" style={{ display: permission === 'granted' && cameraStatus === 'active' ? 'block' : 'none' }}></canvas>
                {permission !== 'granted' && (
                  <div className="w-full h-48 md:h-64 bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 text-sm md:text-base">
@@ -507,7 +543,15 @@ export default function CameraFeed({ roomId, countdown }) {
                    ✅ Gesture terdeteksi: {previewGesture}
                  </div>
                )}
-             </div>
+               {handOrientation && handOrientation !== 'facing_camera' && (
+                 <div className="mt-2 p-2 bg-amber-900/50 border border-amber-700 rounded text-amber-200 text-xs">
+                   ⚠️ Orientasi tangan: {handOrientation === 'facing_right' ? 'Menghadap kanan' : 
+                                        handOrientation === 'facing_left' ? 'Menghadap kiri' :
+                                        handOrientation === 'facing_up' ? 'Menghadap atas' :
+                                        'Menghadap bawah'}. Coba putar tangan menghadap kamera untuk deteksi yang lebih baik.
+                 </div>
+               )}
+      </div>
     </div>
   )
 }

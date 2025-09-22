@@ -111,8 +111,6 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('room-update', { roomId, players: Object.values(room.players) });
     io.to(roomId).emit('ready-update', { roomId, ready: room.ready });
     io.emit('rooms-update');
-
-    // No auto-start. Use ready flow.
   });
 
   // Player ready toggle
@@ -233,5 +231,3 @@ server.listen(PORT, () => {
   const proto = server instanceof https.Server ? 'https' : 'http';
   console.log(`Socket.io server listening on ${proto}://localhost:${PORT}`);
 });
-
-

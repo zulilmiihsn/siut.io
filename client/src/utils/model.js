@@ -1,13 +1,13 @@
 let tf = null
 async function getTf() {
   if (!tf) {
-    const [{ tensor, softmax, setBackend, ready, loadLayersModel }] = await Promise.all([
+    const [{ tensor, setBackend, ready }] = await Promise.all([
       import(/* @vite-ignore */ '@tensorflow/tfjs')
     ])
     await import(/* @vite-ignore */ '@tensorflow/tfjs-backend-webgl')
     await setBackend('webgl')
     await ready()
-    tf = { tensor, softmax, loadLayersModel }
+    tf = { tensor }
   }
   return tf
 }
@@ -19,8 +19,6 @@ export async function loadModel() {
   if (model) return model
   try {
     const t = await getTf()
-    console.log('[siut.io] Creating simple model instead of loading from file')
-    
     // Buat model sederhana secara programmatis
     const { sequential, layers } = await import('@tensorflow/tfjs')
     
@@ -41,51 +39,33 @@ export async function loadModel() {
       metrics: ['accuracy']
     })
     
-    console.log('[siut.io] Simple model created successfully:', !!model)
-    console.log('[siut.io] Model input shape:', model.inputs[0].shape)
-    console.log('[siut.io] Model output shape:', model.outputs[0].shape)
-    
     // Test model dengan dummy data
     const testInput = t.tensor(new Array(63).fill(0.5), [1, 63])
     const testOutput = model.predict(testInput)
-    console.log('[siut.io] Model test prediction shape:', testOutput.shape)
     testInput.dispose()
     testOutput.dispose()
     
     return model
   } catch (e) {
-    console.error('[siut.io] Model creation error:', e)
-    console.error('[siut.io] Error details:', e.message)
-    console.error('[siut.io] Stack trace:', e.stack)
-    console.error('[siut.io] Tidak bisa membuat model TensorFlow.js')
+    console.error('[siut.io] Model creation failed:', e.message)
     return null
   }
 }
 
-// Helper function untuk mendapatkan pesan error
-export function getErrorMessage() {
-  return "Tidak bisa mendeteksi gesture tangan"
-}
+// Helper function removed - not used
 
 // Normalisasi landmarks tangan (x,y) ke format tensor [1, 63]
 export function normalizeLandmarks(landmarks, width, height) {
   if (!landmarks || landmarks.length === 0) {
-    console.log('[siut.io] No landmarks provided')
     return null
   }
   const pts = landmarks[0]
   if (!pts || pts.length === 0) {
-    console.log('[siut.io] No landmark points in first hand')
     return null
   }
   
-  console.log('[siut.io] Raw landmarks count:', pts.length)
-  console.log('[siut.io] First few landmarks:', pts.slice(0, 3))
-  console.log('[siut.io] Canvas dimensions:', { width, height })
-  
   // Pastikan kita punya 21 landmarks (MediaPipe standard)
   if (pts.length !== 21) {
-    console.log('[siut.io] Expected 21 landmarks, got:', pts.length)
     return null
   }
   
@@ -101,9 +81,6 @@ export function normalizeLandmarks(landmarks, width, height) {
     arr.push(0) // z coordinate (dummy)
   }
   
-  console.log('[siut.io] Normalized landmarks length:', arr.length)
-  console.log('[siut.io] First few normalized values:', arr.slice(0, 9))
-  console.log('[siut.io] Last few normalized values:', arr.slice(-9))
   return arr
 }
 
@@ -131,13 +108,19 @@ function detectGestureHeuristic(landmarks) {
   const THUMB_TIP = 4, INDEX_FINGER_TIP = 8, MIDDLE_FINGER_TIP = 12, RING_FINGER_TIP = 16, PINKY_TIP = 20
   const THUMB_IP = 3, INDEX_FINGER_PIP = 6, MIDDLE_FINGER_PIP = 10, RING_FINGER_PIP = 14, PINKY_PIP = 18
   
-  // Optimized finger extension check (single pass)
+  // Optimized finger extension check for different orientations
+  // Check both Y-axis (vertical) and X-axis (horizontal) for side-facing hands
   const fingerChecks = [
-    hand[THUMB_TIP].y < hand[THUMB_IP].y,    // thumb
-    hand[INDEX_FINGER_TIP].y < hand[INDEX_FINGER_PIP].y,  // index
-    hand[MIDDLE_FINGER_TIP].y < hand[MIDDLE_FINGER_PIP].y, // middle
-    hand[RING_FINGER_TIP].y < hand[RING_FINGER_PIP].y,    // ring
-    hand[PINKY_TIP].y < hand[PINKY_PIP].y    // pinky
+    // Thumb - check both Y and X axes
+    (hand[THUMB_TIP].y < hand[THUMB_IP].y) || (Math.abs(hand[THUMB_TIP].x - hand[THUMB_IP].x) > 0.05),
+    // Index finger - check both Y and X axes
+    (hand[INDEX_FINGER_TIP].y < hand[INDEX_FINGER_PIP].y) || (Math.abs(hand[INDEX_FINGER_TIP].x - hand[INDEX_FINGER_PIP].x) > 0.05),
+    // Middle finger - check both Y and X axes
+    (hand[MIDDLE_FINGER_TIP].y < hand[MIDDLE_FINGER_PIP].y) || (Math.abs(hand[MIDDLE_FINGER_TIP].x - hand[MIDDLE_FINGER_PIP].x) > 0.05),
+    // Ring finger - check both Y and X axes
+    (hand[RING_FINGER_TIP].y < hand[RING_FINGER_PIP].y) || (Math.abs(hand[RING_FINGER_TIP].x - hand[RING_FINGER_PIP].x) > 0.05),
+    // Pinky - check both Y and X axes
+    (hand[PINKY_TIP].y < hand[PINKY_PIP].y) || (Math.abs(hand[PINKY_TIP].x - hand[PINKY_PIP].x) > 0.05)
   ]
   
   const extendedCount = fingerChecks.filter(Boolean).length
@@ -176,43 +159,31 @@ function detectGestureHeuristic(landmarks) {
 
 export async function predictGestureFromLandmarks(landmarks, width, height) {
   try {
-    console.log('[siut.io] Starting prediction with landmarks:', !!landmarks)
-    console.log('[siut.io] Landmarks type:', typeof landmarks)
-    console.log('[siut.io] Landmarks length:', landmarks?.length)
-    
     // Coba heuristic detection dulu
     const heuristicResult = detectGestureHeuristic(landmarks)
     if (heuristicResult) {
-      console.log('[siut.io] Heuristic prediction:', heuristicResult)
       return heuristicResult
     }
     
     // Fallback ke model jika heuristic gagal
     const m = await loadModel()
     if (!m) {
-      console.log('[siut.io] Model tidak tersedia, menggunakan fallback')
       return { error: "Tidak bisa mendeteksi gesture tangan" }
     }
     
     const t = await getTf()
     const normalizedData = normalizeLandmarks(landmarks, width, height)
     if (!normalizedData) {
-      console.log('[siut.io] Gagal menormalisasi landmarks')
       return { error: "Tidak bisa mendeteksi tangan" }
     }
     
     // Buat tensor dengan shape [1, 63] sesuai input model
     const input = t.tensor(normalizedData, [1, 63])
-    console.log('[siut.io] Input tensor shape:', input.shape)
-    console.log('[siut.io] Input tensor data sample:', Array.from(input.dataSync()).slice(0, 10))
     
     // Prediksi dengan layers model
     const predictions = m.predict(input)
     
-    console.log('[siut.io] Predictions tensor shape:', predictions.shape)
-    
     const data = await predictions.data()
-    console.log('[siut.io] Prediction probabilities:', Array.from(data))
     
     // Cleanup
     input.dispose()
@@ -229,16 +200,13 @@ export async function predictGestureFromLandmarks(landmarks, width, height) {
     
     // Hanya return hasil jika confidence cukup tinggi
     if (confidence < 0.3) {
-      console.log('[siut.io] Confidence terlalu rendah:', confidence)
       return { error: "Gesture tidak jelas, coba lagi" }
     }
     
-    console.log('[siut.io] Final prediction:', { label, confidence, bestIdx })
     return { label, confidence }
     
   } catch (e) {
-    console.error('[siut.io] Prediction error:', e)
-    console.error('[siut.io] Error stack:', e.stack)
+    console.error('[siut.io] Prediction error:', e.message)
     return { error: "Terjadi kesalahan saat mendeteksi gesture" }
   }
 }

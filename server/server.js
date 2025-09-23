@@ -1,7 +1,5 @@
 import express from 'express';
 import http from 'http';
-import https from 'https';
-import fs from 'fs';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { nanoid } from 'nanoid';
@@ -10,35 +8,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Support HTTPS via env
-// Set env: HTTPS=true, SSL_KEY_PATH, SSL_CERT_PATH, optional SSL_CA_PATH
-let server;
-const useHttps = process.env.HTTPS === 'true' || process.env.HTTPS === '1';
-if (useHttps) {
-  try {
-    const keyPath = process.env.SSL_KEY_PATH;
-    const certPath = process.env.SSL_CERT_PATH;
-    const caPath = process.env.SSL_CA_PATH;
-    if (!keyPath || !certPath) {
-      console.warn('[server] HTTPS enabled but SSL_KEY_PATH/SSL_CERT_PATH not set. Falling back to HTTP.');
-      server = http.createServer(app);
-    } else {
-      const options = {
-        key: fs.readFileSync(keyPath),
-        cert: fs.readFileSync(certPath)
-      };
-      if (caPath) {
-        options.ca = fs.readFileSync(caPath);
-      }
-      server = https.createServer(options, app);
-    }
-  } catch (err) {
-    console.error('[server] HTTPS init failed, fallback to HTTP:', err?.message);
-    server = http.createServer(app);
-  }
-} else {
-  server = http.createServer(app);
-}
+const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: '*',
@@ -60,15 +30,6 @@ const io = new Server(server, {
 // }
 const rooms = {};
 
-function getRoundWinner(gestureA, gestureB) {
-  if (gestureA === gestureB) return 'draw';
-  const winMap = {
-    rock: 'scissors',
-    paper: 'rock',
-    scissors: 'paper'
-  };
-  return winMap[gestureA] === gestureB ? 'a' : 'b';
-}
 
 io.on('connection', (socket) => {
   // Lobby: list available rooms (rooms with < 2 players)
@@ -182,10 +143,20 @@ io.on('connection', (socket) => {
       const [a, b] = submittedIds.slice(0, 2);
       const gestureA = room.gestures[a];
       const gestureB = room.gestures[b];
-      const winnerKey = getRoundWinner(gestureA, gestureB);
+      // Determine winner
       let result = { type: 'draw', winner: null };
-      if (winnerKey === 'a') result = { type: 'win', winner: a };
-      if (winnerKey === 'b') result = { type: 'win', winner: b };
+      if (gestureA !== gestureB) {
+        const winMap = {
+          rock: 'scissors',
+          paper: 'rock',
+          scissors: 'paper'
+        };
+        if (winMap[gestureA] === gestureB) {
+          result = { type: 'win', winner: a };
+        } else {
+          result = { type: 'win', winner: b };
+        }
+      }
 
       io.to(roomId).emit('round-result', {
         roomId,
@@ -228,6 +199,5 @@ app.get('/', (_req, res) => {
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  const proto = server instanceof https.Server ? 'https' : 'http';
-  console.log(`Socket.io server listening on ${proto}://localhost:${PORT}`);
+  console.log(`Socket.io server listening on http://localhost:${PORT}`);
 });

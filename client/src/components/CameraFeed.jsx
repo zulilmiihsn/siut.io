@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Hands } from '@mediapipe/hands'
 import { Camera } from '@mediapipe/camera_utils'
 import { socket } from '../utils/socket.js'
-import { predictGestureFromLandmarks, loadModel } from '../utils/model.js'
+import { predictGestureFromLandmarks } from '../utils/model.js'
 
 export default function CameraFeed({ roomId, countdown }) {
   const videoRef = useRef(null)
@@ -10,15 +10,13 @@ export default function CameraFeed({ roomId, countdown }) {
   const [permission, setPermission] = useState('pending')
   const cameraRef = useRef(null)
   const submittedRef = useRef(false)
-  const targetFpsRef = useRef(20) // Start with lower FPS
+  const targetFpsRef = useRef(30) // Target FPS default
   const lastFrameTsRef = useRef(0)
   const lastPreviewTsRef = useRef(0)
   const frameSkipRef = useRef(0)
-  const performanceMonitorRef = useRef({ frameCount: 0, lastCheck: 0 })
   const [previewGesture, setPreviewGesture] = useState(null) // Keep for UI feedback
-  const [errorMessage, setErrorMessage] = useState(null)
-  const [cameraStatus, setCameraStatus] = useState('active')
-  const [handOrientation, setHandOrientation] = useState(null) // Track hand orientation
+  const stableLabelRef = useRef(null)
+  const stableCountRef = useRef(0)
 
   const onResults = useCallback((results) => {
     const canvas = canvasRef.current
@@ -45,41 +43,6 @@ export default function CameraFeed({ roomId, countdown }) {
         })
       })
       ctx.fill()
-      
-      // Detect hand orientation for better guidance
-      if (results.multiHandLandmarks.length > 0) {
-        const hand = results.multiHandLandmarks[0]
-        if (hand && hand.length >= 21) {
-          // Calculate hand orientation based on palm center and wrist
-          const palmCenter = hand[9] // Middle finger MCP
-          const wrist = hand[0] // Wrist
-          const thumbBase = hand[1] // Thumb CMC
-          
-          // Calculate orientation vector
-          const palmToWrist = {
-            x: palmCenter.x - wrist.x,
-            y: palmCenter.y - wrist.y
-          }
-          
-          // Determine orientation
-          const angle = Math.atan2(palmToWrist.y, palmToWrist.x) * 180 / Math.PI
-          let orientation = 'facing_camera'
-          
-          if (angle > 45 && angle < 135) {
-            orientation = 'facing_right'
-          } else if (angle > -135 && angle < -45) {
-            orientation = 'facing_left'
-          } else if (angle > 135 || angle < -135) {
-            orientation = 'facing_up'
-          } else if (angle > -45 && angle < 45) {
-            orientation = 'facing_down'
-          }
-          
-          setHandOrientation(orientation)
-        }
-      }
-    } else {
-      setHandOrientation(null)
     }
 
             // Optimized live preview prediction with frame skipping
@@ -98,25 +61,33 @@ export default function CameraFeed({ roomId, countdown }) {
                   if (handLandmarks && handLandmarks.length > 0) {
                     const pred = await predictGestureFromLandmarks([handLandmarks], canvas.width, canvas.height)
                     
-                    if (pred?.error) {
-                      setPreviewGesture(null)
-                      setErrorMessage(pred.error)
-                    } else if (pred?.confidence >= 0.4) { // Turunkan threshold untuk deteksi lebih sensitif
+                    if (pred?.confidence >= 0.4 && pred?.label) { // Turunkan threshold untuk deteksi lebih sensitif
+                      // Smoothing: butuh 2 deteksi berurutan sama
+                      if (stableLabelRef.current === pred.label) {
+                        stableCountRef.current += 1
+                      } else {
+                        stableLabelRef.current = pred.label
+                        stableCountRef.current = 1
+                      }
+                      if (stableCountRef.current >= 2) {
                       setPreviewGesture(pred.label)
-                      setErrorMessage(null)
+                      }
                     } else {
                       setPreviewGesture(null)
-                      setErrorMessage(null)
+                      stableLabelRef.current = null
+                      stableCountRef.current = 0
                     }
                   } else {
                     setPreviewGesture(null)
-                    setErrorMessage(null)
+                    stableLabelRef.current = null
+                    stableCountRef.current = 0
                   }
                 })()
               }
             } else {
               setPreviewGesture(null)
-              setErrorMessage(null)
+              stableLabelRef.current = null
+              stableCountRef.current = 0
             }
 
     // Emoji overlay removed for better performance
@@ -130,17 +101,12 @@ export default function CameraFeed({ roomId, countdown }) {
                if (handLandmarks && handLandmarks.length > 0) {
                  const pred = await predictGestureFromLandmarks([handLandmarks], canvas.width, canvas.height)
                  
-                 if (pred?.error) {
-                   setErrorMessage(pred.error)
-                   submittedRef.current = false
-                 } else if (pred?.label) {
+                 if (pred?.label) {
                    socket.emit('submit-gesture', { roomId, gesture: pred.label })
                  } else {
-                   setErrorMessage("Tidak ada gesture yang terdeteksi")
                    submittedRef.current = false
                  }
                } else {
-                 setErrorMessage("Tidak ada tangan yang terdeteksi")
                  submittedRef.current = false
                }
              })()
@@ -204,7 +170,6 @@ export default function CameraFeed({ roomId, countdown }) {
           await new Promise(resolve => setTimeout(resolve, 500))
         }
         setPermission('granted')
-        setCameraStatus('active')
 
         // Setting up MediaPipe Hands
         
@@ -245,23 +210,18 @@ export default function CameraFeed({ roomId, countdown }) {
             send: () => Promise.resolve(),
             close: () => {}
           }
-          setErrorMessage('MediaPipe tidak bisa dimuat, gesture detection dinonaktifkan')
+          console.warn('MediaPipe tidak bisa dimuat, gesture detection dinonaktifkan')
         }
         
         hands.setOptions({
-          maxNumHands: 2, // Deteksi hingga 2 tangan untuk orientasi berbeda
-          modelComplexity: 1, // Naikkan complexity untuk deteksi yang lebih baik
-          minDetectionConfidence: 0.5, // Turunkan threshold untuk deteksi lebih sensitif
-          minTrackingConfidence: 0.5,  // Turunkan threshold untuk tracking lebih stabil
+          selfieMode: true,
+          maxNumHands: 1, // Lebih stabil untuk 1 pemain
+          modelComplexity: 1, // Akurasi lebih baik
+          minDetectionConfidence: 0.6, // Sedikit dinaikkan untuk kualitas
+          minTrackingConfidence: 0.6,  // Sedikit dinaikkan untuk stabilitas
         })
         hands.onResults(onResults)
 
-        // Pre-load the TensorFlow model
-        try {
-          await loadModel()
-        } catch (e) {
-          console.error('[siut.io] Failed to pre-load TensorFlow model:', e)
-        }
 
         cameraRef.current = new Camera(videoRef.current, {
           onFrame: async () => {
@@ -271,30 +231,16 @@ export default function CameraFeed({ roomId, countdown }) {
               if (now - lastFrameTsRef.current < minInterval) return
               lastFrameTsRef.current = now
               
-              // Performance monitoring
-              performanceMonitorRef.current.frameCount++
-              if (now - performanceMonitorRef.current.lastCheck > 5000) { // Check every 5 seconds
-                const fps = performanceMonitorRef.current.frameCount / 5
-                
-                // Auto-adjust FPS based on performance
-                if (fps < targetFpsRef.current * 0.8) {
-                  targetFpsRef.current = Math.max(10, targetFpsRef.current - 2)
-                } else if (fps > targetFpsRef.current * 1.2) {
-                  targetFpsRef.current = Math.min(30, targetFpsRef.current + 2)
-                }
-                
-                performanceMonitorRef.current = { frameCount: 0, lastCheck: now }
-              }
               
               // Cek apakah video masih aktif dan hands tersedia
               if (videoRef.current && videoRef.current.readyState >= 2 && hands && hands.send) {
                 try {
-            await hands.send({ image: videoRef.current })
+                  await hands.send({ image: videoRef.current })
                 } catch (e) {
                   console.warn('[siut.io] Hands processing error:', e)
                   // Jika hands error, coba restart
                   if (e.message?.includes('MediaPipe') || e.message?.includes('wasm')) {
-                    setErrorMessage('MediaPipe error, coba refresh halaman')
+                    console.warn('MediaPipe error, coba refresh halaman')
                   }
                 }
               }
@@ -306,11 +252,6 @@ export default function CameraFeed({ roomId, countdown }) {
           height: window.innerWidth < 420 ? 240 : 360
         })
         
-        // Tambahkan error handling untuk camera
-        cameraRef.current.onError = (error) => {
-          console.error('[siut.io] Camera error:', error)
-          setPermission('denied')
-        }
         
         cameraRef.current.start()
       } catch (e) {
@@ -338,9 +279,6 @@ export default function CameraFeed({ roomId, countdown }) {
           videoRef.current.srcObject = null
         }
         
-        // Reset performance monitoring
-        performanceMonitorRef.current = { frameCount: 0, lastCheck: 0 }
-        frameSkipRef.current = 0
         
         // Clear canvas
         const canvas = canvasRef.current
@@ -356,7 +294,6 @@ export default function CameraFeed({ roomId, countdown }) {
   useEffect(() => {
     if (countdown > 0) {
       submittedRef.current = false
-      setErrorMessage(null)
     }
   }, [countdown])
 
@@ -371,9 +308,9 @@ export default function CameraFeed({ roomId, countdown }) {
       if (hidden) {
         targetFpsRef.current = 1
       } else if (isMobile || isLowEnd) {
-        targetFpsRef.current = 12
+        targetFpsRef.current = 20
       } else {
-        targetFpsRef.current = 18
+        targetFpsRef.current = 30
       }
     }
     updateFps()
@@ -397,163 +334,34 @@ export default function CameraFeed({ roomId, countdown }) {
     }
   }, [permission])
 
-  // Monitor camera status
-  useEffect(() => {
-    if (permission !== 'granted') return
 
-    const checkCameraStatus = () => {
-      if (videoRef.current) {
-        const video = videoRef.current
-        const isPlaying = !video.paused && !video.ended && video.readyState >= 2
-        const hasVideo = video.videoWidth > 0 && video.videoHeight > 0
-        
-        // Camera status check optimized
-        
-        if (!isPlaying || !hasVideo) {
-          console.warn('[siut.io] Camera appears to be inactive')
-          setCameraStatus('inactive')
-          setErrorMessage('Kamera tidak aktif, coba refresh halaman')
-        } else {
-          setCameraStatus('active')
-          setErrorMessage(null)
-        }
-      }
+  const iconForGesture = (label) => {
+    if (!label) return '✋'
+    const map = {
+      rock: '✊',
+      paper: '✋',
+      scissors: '✌️'
     }
-
-    // Initial check after a delay to let camera initialize
-    const initialCheck = setTimeout(checkCameraStatus, 1000)
-    const interval = setInterval(checkCameraStatus, 3000) // Check every 3 seconds
-    
-    return () => {
-      clearTimeout(initialCheck)
-      clearInterval(interval)
-    }
-  }, [permission])
-
-  const retryCamera = async () => {
-    setPermission('pending')
-    setCameraStatus('restarting')
-    setErrorMessage(null)
-    
-    try {
-      // Stop existing camera and stream
-      if (cameraRef.current) {
-        cameraRef.current.stop()
-      }
-      const tracks = videoRef.current?.srcObject?.getTracks?.() || []
-      tracks.forEach((t) => t.stop())
-      
-      // Wait a bit before retrying
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // Try again with different constraints
-      const constraints = [
-        { video: { width: 640, height: 480, facingMode: 'user' } },
-        { video: { width: 640, height: 480 } },
-        { video: true }
-      ]
-
-      let stream = null
-      for (const constraint of constraints) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia(constraint)
-          break
-        } catch (err) {
-          // Constraint failed
-          continue
-        }
-      }
-
-      if (!stream) {
-        throw new Error('All camera constraints failed')
-      }
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await new Promise((resolve) => {
-          if (videoRef.current.readyState >= 3) {
-            resolve()
-          } else {
-            videoRef.current.onloadedmetadata = resolve
-          }
-        })
-        await videoRef.current.play()
-      }
-      
-      setPermission('granted')
-      setCameraStatus('active')
-    } catch (e) {
-      console.error('[siut.io] Camera retry failed:', e)
-      setPermission('denied')
-      setCameraStatus('inactive')
-      setErrorMessage('Gagal memulai kamera: ' + e.message)
-    }
+    return map[label] || '✋'
   }
 
   return (
-           <div className="grid gap-2 md:gap-3">
       <div className="relative w-full">
-        <video ref={videoRef} className="w-full rounded-lg hidden" muted playsInline></video>
-               <canvas ref={canvasRef} className="w-full rounded-lg" style={{ display: permission === 'granted' && cameraStatus === 'active' ? 'block' : 'none' }}></canvas>
-               {permission !== 'granted' && (
-                 <div className="w-full h-48 md:h-64 bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 text-sm md:text-base">
-                   {permission === 'pending' ? 'Memuat kamera...' : 'Kamera tidak tersedia'}
+      {/* Processing elements */}
+      <video ref={videoRef} className="hidden" muted playsInline></video>
+      {/* Preview canvas (visible) */}
+      <div className="relative aspect-video bg-slate-900 rounded-xl overflow-hidden">
+        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full"></canvas>
+        {/* Gesture overlay */}
+        <div className="absolute top-3 left-3 bg-black/40 text-white rounded-lg px-3 py-1 select-none">
+          <span className="text-3xl md:text-4xl leading-none">
+            {iconForGesture(previewGesture)}
+          </span>
                  </div>
-               )}
-               {permission === 'granted' && cameraStatus !== 'active' && (
-                 <div className="w-full h-48 md:h-64 bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 text-sm md:text-base">
-                   Kamera tidak aktif - {cameraStatus}
-                 </div>
-               )}
-             </div>
-             <div className="text-xs md:text-sm text-slate-300">
-               <div className="flex flex-wrap gap-2 mb-2">
-                 <span className="badge text-xs">Kamera: {permission}</span>
-                 <span className="badge text-xs">Status: {cameraStatus}</span>
-               </div>
-               {permission === 'denied' && (
-                 <div className="mt-2 p-2 bg-red-900/50 border border-red-700 rounded text-red-200 text-xs">
-                   ⚠️ Akses kamera ditolak. Pastikan Anda mengizinkan akses kamera di browser.
-                   <button 
-                     onClick={retryCamera}
-                     className="ml-2 px-2 py-1 bg-red-600 hover:bg-red-500 rounded text-xs"
-                   >
-                     Coba Lagi
-                   </button>
-                 </div>
-               )}
-               {cameraStatus === 'inactive' && permission === 'granted' && (
-                 <div className="mt-2 p-2 bg-yellow-900/50 border border-yellow-700 rounded text-yellow-200 text-xs">
-                   ⚠️ Kamera tidak aktif. 
-                   <button 
-                     onClick={retryCamera}
-                     className="ml-2 px-2 py-1 bg-yellow-600 hover:bg-yellow-500 rounded text-xs"
-                   >
-                     Restart Kamera
-                   </button>
-                 </div>
-               )}
-               {errorMessage && (
-                 <div className="mt-2 p-2 bg-red-900/50 border border-red-700 rounded text-red-200 text-xs">
-                   ⚠️ {errorMessage}
-                 </div>
-               )}
-               {previewGesture && !errorMessage && cameraStatus === 'active' && (
-                 <div className="mt-2 p-2 bg-green-900/50 border border-green-700 rounded text-green-200 text-xs">
-                   ✅ Gesture terdeteksi: {previewGesture}
-                 </div>
-               )}
-               {handOrientation && handOrientation !== 'facing_camera' && (
-                 <div className="mt-2 p-2 bg-amber-900/50 border border-amber-700 rounded text-amber-200 text-xs">
-                   ⚠️ Orientasi tangan: {handOrientation === 'facing_right' ? 'Menghadap kanan' : 
-                                        handOrientation === 'facing_left' ? 'Menghadap kiri' :
-                                        handOrientation === 'facing_up' ? 'Menghadap atas' :
-                                        'Menghadap bawah'}. Coba putar tangan menghadap kamera untuk deteksi yang lebih baik.
-                 </div>
-               )}
       </div>
     </div>
   )
 }
+
 
 

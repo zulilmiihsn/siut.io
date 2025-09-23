@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import CameraFeed from '../components/CameraFeed.jsx'
 import { socket } from '../utils/socket.js'
@@ -74,17 +74,14 @@ export default function GameRoom() {
     socket.emit('set-ready', { roomId, ready: next })
   }
 
-  // Check if all players are ready (memoized)
-  const canStartGame = useMemo(() => 
-    players.length >= 2 && players.every(p => readyMap[p.id]) && !gameStarted && countdown === 0,
-    [players.length, readyMap, gameStarted, countdown]
-  )
+  // Check if all players are ready
+  const canStartGame = players.length >= 2 && players.every(p => readyMap[p.id]) && !gameStarted && countdown === 0
 
-  const winnerText = useMemo(() => {
+  const winnerText = (() => {
     if (!result) return '—'
     if (result.result.type === 'draw') return 'Seri'
     return result.result.winner === socket.id ? 'Kamu Menang!' : 'Kamu Kalah'
-  }, [result])
+  })()
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 fade-in">

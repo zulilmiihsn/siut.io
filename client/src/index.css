@@ -7,14 +7,27 @@
   @apply bg-slate-800/60 backdrop-blur rounded-lg md:rounded-xl shadow-lg p-4 md:p-6;
 }
 
-/* Game theme */
+/* Game theme - Competitive Gaming Colors */
 :root {
-  --brand: 14 165 233; /* sky-500 */
-  --brand-600: 2 132 199; /* sky-600 */
+  --brand: 34 197 94; /* green-500 - Success/Win */
+  --brand-600: 22 163 74; /* green-600 */
+  --accent: 239 68 68; /* red-500 - Danger/Lose */
+  --accent-600: 220 38 38; /* red-600 */
+  --warning: 245 158 11; /* amber-500 - Warning/Draw */
+  --warning-600: 217 119 6; /* amber-600 */
+  --primary: 147 51 234; /* purple-600 - Primary */
+  --primary-600: 126 34 206; /* purple-700 */
+  --secondary: 59 130 246; /* blue-500 - Secondary */
+  --secondary-600: 37 99 235; /* blue-600 */
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   font-family: 'Outfit', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  scroll-behavior: smooth;
 }
 
 .game-title {
@@ -23,12 +36,34 @@ body {
 }
 
 .btn-primary {
-  @apply inline-flex items-center gap-2 px-4 md:px-5 py-2 md:py-3 rounded-lg md:rounded-xl font-semibold shadow-lg transition text-sm md:text-base;
-  background: linear-gradient(180deg, rgb(var(--brand)) 0%, rgb(var(--brand-600)) 100%);
+  @apply inline-flex items-center gap-2 px-4 md:px-5 py-2 md:py-3 rounded-lg md:rounded-xl font-bold shadow-lg transition-all duration-200 text-sm md:text-base;
+  background: linear-gradient(135deg, rgb(var(--brand)) 0%, rgb(var(--brand-600)) 100%);
+  box-shadow: 0 4px 15px rgba(var(--brand), 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
-.btn-primary:hover { filter: brightness(1.05); }
+.btn-primary:hover { 
+  filter: brightness(1.1) saturate(1.2);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(var(--brand), 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 10px rgba(var(--brand), 0.3);
+}
 .btn-glass {
-  @apply inline-flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg md:rounded-xl font-medium bg-white/10 backdrop-blur border border-white/10 hover:bg-white/15 transition text-sm md:text-base;
+  @apply inline-flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg md:rounded-xl font-semibold backdrop-blur transition-all duration-200 text-sm md:text-base;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+.btn-glass:hover { 
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.btn-glass:active {
+  transform: translateY(0);
 }
 
 .badge {
@@ -68,6 +103,167 @@ body {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Game result modal animations */
+@keyframes pulse-scale {
+  0% { 
+    opacity: 0; 
+    transform: scale(0.3) translateY(-50px); 
+  }
+  50% { 
+    opacity: 1; 
+    transform: scale(1.05) translateY(0); 
+  }
+  100% { 
+    opacity: 1; 
+    transform: scale(1) translateY(0); 
+  }
+}
+
+.animate-pulse-scale {
+  animation: pulse-scale 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Enhanced pulse animation for countdown */
+@keyframes countdown-pulse {
+  0%, 100% { 
+    transform: scale(1); 
+    opacity: 1; 
+  }
+  50% { 
+    transform: scale(1.1); 
+    opacity: 0.8; 
+  }
+}
+
+.animate-countdown-pulse {
+  animation: countdown-pulse 1s ease-in-out infinite;
+}
+
+/* Game status animations */
+@keyframes game-ready {
+  0% { 
+    transform: scale(1); 
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+  }
+  70% { 
+    transform: scale(1.05); 
+    box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+  }
+  100% { 
+    transform: scale(1); 
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}
+
+.animate-game-ready {
+  animation: game-ready 2s infinite;
+}
+
+/* Competitive Game Animations */
+@keyframes victory-pulse {
+  0%, 100% { 
+    transform: scale(1); 
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+  }
+  50% { 
+    transform: scale(1.05); 
+    box-shadow: 0 0 0 20px rgba(34, 197, 94, 0);
+  }
+}
+
+.animate-victory-pulse {
+  animation: victory-pulse 1.5s infinite;
+}
+
+@keyframes defeat-shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+  20%, 40%, 60%, 80% { transform: translateX(2px); }
+}
+
+.animate-defeat-shake {
+  animation: defeat-shake 0.5s ease-in-out;
+}
+
+@keyframes competitive-glow {
+  0%, 100% { 
+    box-shadow: 0 0 5px rgba(var(--primary), 0.5);
+  }
+  50% { 
+    box-shadow: 0 0 20px rgba(var(--primary), 0.8), 0 0 30px rgba(var(--primary), 0.6);
+  }
+}
+
+.animate-competitive-glow {
+  animation: competitive-glow 2s ease-in-out infinite;
+}
+
+@keyframes power-up {
+  0% { 
+    transform: scale(0.8) rotate(-5deg);
+    opacity: 0;
+  }
+  50% { 
+    transform: scale(1.1) rotate(0deg);
+    opacity: 1;
+  }
+  100% { 
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.animate-power-up {
+  animation: power-up 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Mobile-first responsive improvements */
+@media (max-width: 640px) {
+  .btn-primary, .btn-glass {
+    @apply text-sm px-3 py-2;
+  }
+  
+  .game-title {
+    @apply text-xl;
+  }
+  
+  .panel {
+    @apply p-3;
+  }
+}
+
+/* Smooth scroll optimizations */
+* {
+  scroll-behavior: smooth;
+}
+
+/* Enhanced smooth scrolling for better performance */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  /* Custom scrollbar styling for better UX */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.3);
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: rgba(59, 130, 246, 0.5);
+    border-radius: 4px;
+    transition: background 0.2s ease;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(59, 130, 246, 0.7);
+  }
 }
 
 /* Performance optimizations */

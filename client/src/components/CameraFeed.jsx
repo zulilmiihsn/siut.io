@@ -336,13 +336,13 @@ export default function CameraFeed({ roomId, countdown }) {
 
 
   const iconForGesture = (label) => {
-    if (!label) return '✋'
+    if (!label) return { emoji: '✋', name: 'Tidak terdeteksi', color: 'text-slate-400' }
     const map = {
-      rock: '✊',
-      paper: '✋',
-      scissors: '✌️'
+      rock: { emoji: '✊', name: 'Batu', color: 'text-gray-400' },
+      paper: { emoji: '✋', name: 'Kertas', color: 'text-blue-400' },
+      scissors: { emoji: '✌️', name: 'Gunting', color: 'text-green-400' }
     }
-    return map[label] || '✋'
+    return map[label] || { emoji: '✋', name: 'Tidak terdeteksi', color: 'text-slate-400' }
   }
 
   return (
@@ -352,12 +352,39 @@ export default function CameraFeed({ roomId, countdown }) {
       {/* Preview canvas (visible) */}
       <div className="relative aspect-video bg-slate-900 rounded-xl overflow-hidden">
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full"></canvas>
-        {/* Gesture overlay */}
-        <div className="absolute top-3 left-3 bg-black/40 text-white rounded-lg px-3 py-1 select-none">
-          <span className="text-3xl md:text-4xl leading-none">
-            {iconForGesture(previewGesture)}
-          </span>
-                 </div>
+        
+        {/* Overlay gerakan - Competitive Style */}
+        <div className="absolute top-3 left-3 bg-gradient-to-r from-slate-800/90 to-slate-900/90 backdrop-blur-md text-white rounded-2xl px-4 py-3 select-none border-2 border-purple-500/30 shadow-lg">
+          <div className="flex items-center gap-3">
+            <span className="text-4xl md:text-5xl leading-none animate-power-up">
+              {iconForGesture(previewGesture).emoji}
+            </span>
+            <div>
+              <div className="text-xs text-purple-300 font-semibold">Gerakan:</div>
+              <div className={`text-sm font-black ${iconForGesture(previewGesture).color} tracking-wide`}>
+                {iconForGesture(previewGesture).name}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Status permainan overlay - Competitive Style */}
+        {countdown > 0 && (
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/30 to-purple-500/30 backdrop-blur-sm flex items-center justify-center">
+            <div className="text-center p-6 bg-slate-800/80 rounded-3xl border-2 border-blue-500/50">
+              <div className="text-7xl md:text-9xl font-black text-blue-400 animate-countdown-pulse drop-shadow-2xl">
+                {countdown}
+              </div>
+              <p className="text-xl md:text-2xl text-blue-200 mt-3 font-bold">Siap-siap ya!</p>
+            </div>
+          </div>
+        )}
+        
+        {countdown === 0 && !submittedRef.current && (
+          <div className="absolute bottom-3 right-3 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-2 border-green-500/50 text-green-400 rounded-xl px-4 py-2 text-sm font-bold animate-victory-pulse">
+            Siap main! ✓
+          </div>
+        )}
       </div>
     </div>
   )

@@ -44,24 +44,24 @@ export default function RoomControls() {
     <div className="grid gap-4 md:gap-6">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4 items-end">
         <div>
-          <label className="block text-xs md:text-sm text-slate-300 mb-1">Nama Anda</label>
+          <label className="block text-xs md:text-sm text-slate-300 mb-1">Nama Kamu</label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && name) createRoom() }}
-            placeholder="Masukkan nama pemain"
+            placeholder="Masukin nama kamu dong"
             className="w-full h-10 md:h-12 px-3 md:px-4 bg-slate-900/60 border border-slate-700 rounded-lg md:rounded-xl focusable text-sm md:text-base"
           />
         </div>
         <div className="flex gap-2 md:gap-3">
-          <button onClick={createRoom} disabled={loading || !name} className="btn-primary disabled:opacity-50 focusable h-10 md:h-12 text-sm md:text-base flex-1"><PlusCircle className="w-4 h-4 md:w-5 md:h-5"/> <span className="hidden sm:inline">Buat Room Baru</span><span className="sm:hidden">Buat Room</span></button>
+          <button onClick={createRoom} disabled={loading || !name} className="btn-primary disabled:opacity-50 focusable h-10 md:h-12 text-sm md:text-base flex-1"><PlusCircle className="w-4 h-4 md:w-5 md:h-5"/> <span className="hidden sm:inline">Bikin Room Baru</span><span className="sm:hidden">Bikin Room</span></button>
           <button onClick={fetchRooms} className="btn-glass h-10 md:h-12 focusable text-sm md:text-base"><span className="hidden sm:inline">Refresh</span><span className="sm:hidden">↻</span></button>
         </div>
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-3 md:mb-4">
-          <h3 className="section-title text-sm md:text-base">Room Tersedia</h3>
+          <h3 className="section-title text-sm md:text-base">Room yang Ada</h3>
           <span className="badge text-xs">{rooms.length} room</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
@@ -89,7 +89,7 @@ export default function RoomControls() {
                   r.playerCount === 1 ? 'text-yellow-400' : 
                   'text-green-400'
                 }`}>
-                  {r.playerCount >= 2 ? 'Penuh' : r.playerCount === 1 ? 'Menunggu pemain' : 'Kosong'}
+                  {r.playerCount >= 2 ? 'Penuh' : r.playerCount === 1 ? 'Tunggu temen' : 'Kosong'}
                 </span>
                 <LogIn className={`w-4 h-4 md:w-5 md:h-5 transition ${
                   loading || !name || r.playerCount >= 2 
@@ -100,15 +100,15 @@ export default function RoomControls() {
             </button>
           ))}
           {rooms.length === 0 && (
-            <div className="text-slate-400 text-xs md:text-sm col-span-full text-center py-8">
-              <div className="mb-2">Belum ada room yang tersedia</div>
-              <div className="text-slate-500">Buat room baru untuk memulai permainan</div>
+              <div className="text-slate-400 text-xs md:text-sm col-span-full text-center py-8">
+              <div className="mb-2">Belum ada room nih</div>
+              <div className="text-slate-500">Bikin room baru dulu yuk!</div>
             </div>
           )}
         </div>
         {!name && (
-          <div className="mt-3 p-3 bg-amber-900/30 border border-amber-700 rounded-lg text-amber-200 text-xs md:text-sm">
-            ⚠️ Masukkan nama Anda terlebih dahulu untuk bergabung ke room
+          <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 bg-amber-500/90 backdrop-blur-sm border border-amber-400 rounded-full text-amber-900 text-xs font-medium shadow-lg animate-pulse">
+            ⚠️ Masukin nama dulu
           </div>
         )}
       </div>
